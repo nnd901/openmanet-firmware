@@ -1,0 +1,11 @@
+{
+	"luci-app-openmanet-usb-otg": {
+		"description": "Grant access to OpenMANET USB OTG LAN share configuration",
+		"read": {
+			"uci": [ "openmanet_usb_otg" ]
+		},
+		"write": {
+			"uci": [ "openmanet_usb_otg" ]
+		}
+	}
+}

@@ -1,0 +1,33 @@
+#!/bin/sh
+
+# First-boot wiring for USB OTG LAN share on Raspberry Pi OpenMANET images.
+
+. /lib/functions.sh
+. /lib/openmanet/usb-otg.sh
+
+enabled="$(uci -q get openmanet_usb_otg.main.enabled)"
+[ "$enabled" = "0" ] && exit 0
+
+preset="$(uci -q get openmanet_usb_otg.main.gadget_preset)"
+[ -n "$preset" ] || preset='ncm'
+
+# Bind the OpenWrt usbgadget preset to the first UDC (dwc2 on Pi).
+if ! uci -q get usbgadget.@preset[0] >/dev/null; then
+	uci -q add usbgadget preset >/dev/null
+fi
+uci -q set usbgadget.@preset[0].name="$preset"
+uci -q set usbgadget.@preset[0].UDC='auto'
+uci -q commit usbgadget
+
+mode="$(uci -q get openmanet_usb_otg.main.share_mode)"
+case "$mode" in
+	nat)
+		openmanet_usb_otg_apply_nat
+		;;
+	*)
+		# Add usb0 to br-lan even before the gadget netdev exists.
+		openmanet_usb_otg_bridge_usb0 || true
+		;;
+esac
+
+exit 0

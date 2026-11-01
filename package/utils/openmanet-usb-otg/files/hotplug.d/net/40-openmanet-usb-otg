@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# When the USB gadget netdev appears, ensure share_mode wiring is applied.
+
+[ "$ACTION" = "add" ] || exit 0
+[ "$INTERFACE" = "usb0" ] || exit 0
+
+[ -f /lib/openmanet/usb-otg.sh ] || exit 0
+. /lib/openmanet/usb-otg.sh
+
+openmanet_usb_otg_enabled || exit 0
+openmanet_usb_otg_apply_network
+
+# Ask netifd to claim the new port / interface.
+ubus call network reload 2>/dev/null || true

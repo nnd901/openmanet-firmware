@@ -1,0 +1,66 @@
+#!/bin/sh /etc/rc.common
+
+START=20
+STOP=90
+
+USE_PROCD=1
+
+. /lib/openmanet/usb-otg.sh
+
+configure_usbgadget() {
+	local enabled preset
+	local idx
+
+	config_load openmanet_usb_otg
+	config_get_bool enabled main enabled 0
+	config_get preset main gadget_preset ncm
+
+	if [ "$enabled" -ne 1 ]; then
+		# Leave usbgadget presets disabled when OTG share is off.
+		idx=0
+		while uci -q get usbgadget.@preset[$idx] >/dev/null; do
+			uci -q delete usbgadget.@preset[$idx].UDC
+			idx=$((idx + 1))
+		done
+		uci -q commit usbgadget
+		return 0
+	fi
+
+	# Ensure a single ncm/rndis preset is present and bound to auto UDC.
+	if ! uci -q get usbgadget.@preset[0] >/dev/null; then
+		uci -q add usbgadget preset
+	fi
+	uci -q set usbgadget.@preset[0].name="$preset"
+	uci -q set usbgadget.@preset[0].UDC='auto'
+	uci -q commit usbgadget
+}
+
+start_service() {
+	configure_usbgadget
+
+	# Always restart usbgadget so enable/disable and preset changes take effect
+	# (clearing UDC in UCI alone does not tear down an already-attached gadget).
+	[ -x /etc/init.d/usbgadget ] && /etc/init.d/usbgadget restart
+
+	openmanet_usb_otg_enabled || return 0
+
+	openmanet_usb_otg_apply_network
+	[ -x /etc/init.d/network ] || return 0
+
+	# Reload network so a newly bridged usb0 is picked up when present.
+	if [ -d /sys/class/net/usb0 ]; then
+		ubus call network reload 2>/dev/null || /etc/init.d/network reload
+	fi
+}
+
+stop_service() {
+	return 0
+}
+
+reload_service() {
+	start_service
+}
+
+service_triggers() {
+	procd_add_reload_trigger openmanet_usb_otg usbgadget network
+}

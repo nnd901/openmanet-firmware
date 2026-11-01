@@ -1,0 +1,21 @@
+config gadget 'g1'
+	option idVendor '0x1d6b'
+	option idProduct '0x0104'
+	option bDeviceClass '239'
+	option bDeviceSubClass '2'
+	option bDeviceProtocol '1'
+	option product 'OpenMANET USB Ethernet'
+
+config configuration 'cfg1'
+	option configuration 'RNDIS+ECM'
+	option gadget 'g1'
+	option bmAttributes '0x80'
+	option MaxPower '250'
+
+config function 'rndis1'
+	option function 'rndis'
+	option configuration 'cfg1'
+
+config function 'ecm1'
+	option function 'ecm'
+	option configuration 'cfg1'
