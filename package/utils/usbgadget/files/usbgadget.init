@@ -10,6 +10,25 @@ log() {
 	logger -t usbgadget "$@"
 }
 
+# Resolve UDC name. "auto" picks the first controller under /sys/class/udc.
+# Empty means the gadget/preset is disabled.
+resolve_udc() {
+	local udc="$1"
+
+	case "$udc" in
+		"" )
+			return 1
+			;;
+		auto)
+			udc="$(ls /sys/class/udc 2>/dev/null | head -n1)"
+			[ -n "$udc" ] || return 1
+			;;
+	esac
+
+	[ -e "/sys/class/udc/$udc" ] || return 1
+	echo "$udc"
+}
+
 apply_configs() {
 	local fs_path="$1"
 	local cfg="$2"
@@ -27,7 +46,7 @@ setup_gadget() {
 	local param udc
 
 	config_get udc "$cfg" UDC
-	[ -z "$udc" ] && return
+	udc="$(resolve_udc "$udc")" || return
 
 	mkdir "$gadget_path" || return
 	apply_configs "$gadget_path" "$cfg"
@@ -87,7 +106,7 @@ attach_gadget() {
 	local param udc
 
 	config_get udc "$cfg" UDC
-	[ -z "$udc" ] && return
+	udc="$(resolve_udc "$udc")" || return
 
 	echo "$udc" > "$gadget_path/UDC"
 }
@@ -110,10 +129,17 @@ apply_preset() (
 
 load_preset() {
 	local cfg="$1"
+	local name udc
+
 	config_get name "$cfg" name
 	config_get udc "$cfg" UDC
-	[ -z "$udc" ] && return
-	apply_preset $name $udc
+	udc="$(resolve_udc "$udc")" || return
+	[ -n "$name" ] || return
+	[ -f "$GADGET_PRESETS_DIR/$name" ] || {
+		log "preset '$name' not found in $GADGET_PRESETS_DIR"
+		return 1
+	}
+	apply_preset "$name" "$udc"
 }
 
 start() {
