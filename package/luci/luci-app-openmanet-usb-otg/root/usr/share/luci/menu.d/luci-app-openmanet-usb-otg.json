@@ -1,0 +1,14 @@
+{
+	"admin/network/openmanet_usb_otg": {
+		"title": "USB OTG LAN share",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "openmanet/usb-otg"
+		},
+		"depends": {
+			"acl": [ "luci-app-openmanet-usb-otg" ],
+			"uci": { "openmanet_usb_otg": true }
+		}
+	}
+}

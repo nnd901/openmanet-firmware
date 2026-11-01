@@ -6,15 +6,10 @@
 # Mini UART is disabled by default unless "enable_uart=1" is specified,
 #  which changes the core frequency to a fixed value and impacts performance.
 # See https://www.raspberrypi.com/documentation/computers/configuration.html#mini-uart-and-cpu-core-frequency
-[pi0]
-# USB data port as Ethernet gadget (OpenMANET USB OTG LAN share)
-dtoverlay=dwc2,dr_mode=peripheral
 [pi0w]
 dtoverlay=disable-bt
-dtoverlay=dwc2,dr_mode=peripheral
 [pi02]
-dtoverlay=dwc2,dr_mode=peripheral
-[pi02w]
+# OpenMANET USB OTG LAN share v1: Zero 2W data port as CDC-NCM gadget
 dtoverlay=dwc2,dr_mode=peripheral
 [pi3]
 dtoverlay=disable-bt
@@ -22,14 +17,13 @@ dtparam=i2c1=on
 [pi4]
 dtoverlay=miniuart-bt
 dtparam=i2c1=on
-# USB-C as Ethernet gadget; Type-A host (xHCI) remains available
-dtoverlay=dwc2,dr_mode=peripheral
-[pi400]
+# OpenMANET USB OTG LAN share v1: Pi 4 USB-C as CDC-NCM gadget;
+# Type-A host (xHCI) remains available. Pi 400 / CM4 not in peripheral v1.
 dtoverlay=dwc2,dr_mode=peripheral
 [cm4]
 # This overlay is used to allow m.2 wifi cards
 dtoverlay=pcie-32bit-dma
-# Enable USB ports on carrier cards (keep host; OTG/peripheral is opt-in)
+# Enable USB ports on carrier cards (keep host; peripheral OTG is out of v1)
 dtoverlay=dwc2,dr_mode=host
 
 [all]

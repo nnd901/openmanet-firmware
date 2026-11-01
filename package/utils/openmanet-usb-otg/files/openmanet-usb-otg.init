@@ -38,11 +38,11 @@ configure_usbgadget() {
 start_service() {
 	configure_usbgadget
 
-	openmanet_usb_otg_enabled || return 0
-
-	# usbgadget starts at 19; re-trigger in case UDC appeared late or
-	# our UCI changes landed after its first pass.
+	# Always restart usbgadget so enable/disable and preset changes take effect
+	# (clearing UDC in UCI alone does not tear down an already-attached gadget).
 	[ -x /etc/init.d/usbgadget ] && /etc/init.d/usbgadget restart
+
+	openmanet_usb_otg_enabled || return 0
 
 	openmanet_usb_otg_apply_network
 	[ -x /etc/init.d/network ] || return 0
