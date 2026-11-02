@@ -18,9 +18,12 @@ openmanet_usb_otg_share_mode() {
 	echo "$mode"
 }
 
-# Ensure usb0 is listed as a br-lan bridge port in UCI (netdev need not exist yet).
-openmanet_usb_otg_bridge_usb0() {
+# Add a single port to the br-lan bridge device in UCI (netdev need not exist yet).
+openmanet_usb_otg_bridge_add_port() {
+	local ifname="$1"
 	local section ports port found=0
+
+	[ -n "$ifname" ] || return 1
 
 	for section in $(uci -q sections network device); do
 		[ "$(uci -q get network."$section".name)" = "br-lan" ] || continue
@@ -28,9 +31,9 @@ openmanet_usb_otg_bridge_usb0() {
 
 		ports="$(uci -q get network."$section".ports)"
 		for port in $ports; do
-			[ "$port" = "usb0" ] && found=1 && break
+			[ "$port" = "$ifname" ] && found=1 && break
 		done
-		[ "$found" -eq 1 ] || uci add_list network."$section".ports='usb0'
+		[ "$found" -eq 1 ] || uci add_list network."$section".ports="$ifname"
 		uci -q commit network
 		return 0
 	done
@@ -38,7 +41,24 @@ openmanet_usb_otg_bridge_usb0() {
 	return 1
 }
 
+# Bridge gadget Ethernet ports. RNDIS+ECM creates usb0 + usb1; NCM/RNDIS typically
+# only usb0. Bridging both keeps WebUI reachable whichever function the host uses.
+openmanet_usb_otg_bridge_gadget_ports() {
+	local ok=1
+
+	openmanet_usb_otg_bridge_add_port usb0 || ok=0
+	openmanet_usb_otg_bridge_add_port usb1 || true
+
+	[ "$ok" -eq 1 ]
+}
+
+# Back-compat alias used by older snippets / docs.
+openmanet_usb_otg_bridge_usb0() {
+	openmanet_usb_otg_bridge_gadget_ports
+}
+
 # Dedicated usb interface + DHCP + firewall forward toward lan/wan.
+# Uses usb0 (RNDIS-only default, or RNDIS first in rndis-ecm).
 openmanet_usb_otg_apply_nat() {
 	local ip netmask start limit section
 
@@ -102,7 +122,7 @@ openmanet_usb_otg_apply_network() {
 			openmanet_usb_otg_apply_nat
 			;;
 		bridge|*)
-			openmanet_usb_otg_bridge_usb0 || return 0
+			openmanet_usb_otg_bridge_gadget_ports || return 0
 			;;
 	esac
 }

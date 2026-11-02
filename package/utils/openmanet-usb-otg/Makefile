@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=openmanet-usb-otg
-PKG_RELEASE:=2
+PKG_RELEASE:=4
 PKG_VERSION:=1.0
 
 PKG_LICENSE:=GPL-2.0-only
@@ -14,13 +14,15 @@ define Package/openmanet-usb-otg
   CATEGORY:=OpenMANET
   SUBMENU:=Network
   TITLE:=Raspberry Pi USB OTG LAN sharing
-  DEPENDS:=@USB_GADGET_SUPPORT +usbgadget +usbgadget-ncm +kmod-usb-dwc2 \
-	+kmod-usb-gadget-eth +kmod-usb-gadget-ncm +kmod-fs-configfs
+  DEPENDS:=@USB_GADGET_SUPPORT +usbgadget +usbgadget-rndis +usbgadget-rndis-ecm \
+	+usbgadget-ncm +kmod-usb-dwc2 +kmod-usb-gadget-eth +kmod-usb-gadget-ncm \
+	+kmod-fs-configfs
 endef
 
 define Package/openmanet-usb-otg/description
-  Enable the Pi USB device controller as a CDC-NCM Ethernet gadget and share
-  the device LAN with a connected USB host (default: bridge usb0 into br-lan).
+  Enable the Pi USB device controller as an RNDIS Ethernet gadget (NCM and
+  RNDIS+ECM selectable) and share the device LAN with a connected USB host
+  (default: bridge gadget ports into br-lan).
 endef
 
 define Package/openmanet-usb-otg/conffiles
