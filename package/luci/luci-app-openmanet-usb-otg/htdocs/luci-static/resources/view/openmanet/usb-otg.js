@@ -7,7 +7,7 @@ return view.extend({
 		var m, s, o;
 
 		m = new form.Map('openmanet_usb_otg', _('USB OTG LAN share'),
-			_('Share this device LAN with a PC or phone over USB Ethernet (RNDIS+ECM by default for Android). ' +
+			_('Share this device LAN with a PC or phone over USB Ethernet (RNDIS by default for Android). ' +
 			  'Supported on Raspberry Pi Zero 2W and Pi 4 USB-C.'));
 
 		s = m.section(form.NamedSection, 'main', 'openmanet_usb_otg', _('Settings'));
@@ -27,11 +27,11 @@ return view.extend({
 		o.rmempty = false;
 
 		o = s.option(form.ListValue, 'gadget_preset', _('USB gadget type'),
-			_('RNDIS+ECM composite is the default for broader Android support. NCM remains available for Linux/macOS/Windows 11 hosts that prefer it.'));
-		o.value('rndis-ecm', _('RNDIS + ECM composite (default)'));
+			_('RNDIS is the default for broader Android support. NCM and RNDIS+ECM remain available for hosts that prefer them.'));
+		o.value('rndis', _('RNDIS (default)'));
+		o.value('rndis-ecm', _('RNDIS + ECM composite'));
 		o.value('ncm', _('CDC NCM'));
-		o.value('rndis', _('RNDIS only'));
-		o.default = 'rndis-ecm';
+		o.default = 'rndis';
 		o.rmempty = false;
 
 		o = s.option(form.Value, 'nat_ip', _('NAT USB IPv4 address'),
