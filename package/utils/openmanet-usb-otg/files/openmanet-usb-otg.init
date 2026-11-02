@@ -13,7 +13,7 @@ configure_usbgadget() {
 
 	config_load openmanet_usb_otg
 	config_get_bool enabled main enabled 0
-	config_get preset main gadget_preset ncm
+	config_get preset main gadget_preset rndis-ecm
 
 	if [ "$enabled" -ne 1 ]; then
 		# Leave usbgadget presets disabled when OTG share is off.
@@ -26,7 +26,7 @@ configure_usbgadget() {
 		return 0
 	fi
 
-	# Ensure a single ncm/rndis preset is present and bound to auto UDC.
+	# Ensure a single gadget preset is present and bound to auto UDC.
 	if ! uci -q get usbgadget.@preset[0] >/dev/null; then
 		uci -q add usbgadget preset
 	fi
@@ -47,8 +47,8 @@ start_service() {
 	openmanet_usb_otg_apply_network
 	[ -x /etc/init.d/network ] || return 0
 
-	# Reload network so a newly bridged usb0 is picked up when present.
-	if [ -d /sys/class/net/usb0 ]; then
+	# Reload network so newly bridged usb0/usb1 ports are picked up when present.
+	if [ -d /sys/class/net/usb0 ] || [ -d /sys/class/net/usb1 ]; then
 		ubus call network reload 2>/dev/null || /etc/init.d/network reload
 	fi
 }

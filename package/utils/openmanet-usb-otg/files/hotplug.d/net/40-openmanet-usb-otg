@@ -1,9 +1,13 @@
 #!/bin/sh
 
-# When the USB gadget netdev appears, ensure share_mode wiring is applied.
+# When a USB gadget netdev appears, ensure share_mode wiring is applied.
+# rndis-ecm exposes usb0 (RNDIS) and usb1 (ECM); ncm/rndis typically only usb0.
 
 [ "$ACTION" = "add" ] || exit 0
-[ "$INTERFACE" = "usb0" ] || exit 0
+case "$INTERFACE" in
+	usb0|usb1) ;;
+	*) exit 0 ;;
+esac
 
 [ -f /lib/openmanet/usb-otg.sh ] || exit 0
 . /lib/openmanet/usb-otg.sh
