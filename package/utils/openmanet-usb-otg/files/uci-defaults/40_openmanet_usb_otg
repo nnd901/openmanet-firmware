@@ -26,7 +26,7 @@ case "$mode" in
 		;;
 	*)
 		# Add usb0/usb1 to br-lan even before the gadget netdevs exist.
-		# rndis-ecm exposes both; ncm/rndis typically only usb0.
+		# rndis/ncm typically only usb0; rndis-ecm exposes both.
 		openmanet_usb_otg_bridge_gadget_ports || true
 		;;
 esac
