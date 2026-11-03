@@ -42,6 +42,10 @@ configure_usbgadget() {
 }
 
 start_service() {
+	# Service (re)start always applies the LuCI/UCI preset resolution; drop any
+	# prior Auto FDB-narrow runtime state so we begin from composite again.
+	openmanet_usb_otg_narrow_state_set ""
+
 	configure_usbgadget
 
 	# Always restart usbgadget so enable/disable and preset changes take effect
