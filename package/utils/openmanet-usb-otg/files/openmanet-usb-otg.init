@@ -13,7 +13,8 @@ configure_usbgadget() {
 
 	config_load openmanet_usb_otg
 	config_get_bool enabled main enabled 0
-	config_get preset main gadget_preset rndis
+	config_get preset main gadget_preset auto
+	preset="$(openmanet_usb_otg_resolve_preset "$preset")"
 
 	if [ "$enabled" -ne 1 ]; then
 		# Leave usbgadget presets disabled when OTG share is off.
@@ -27,6 +28,7 @@ configure_usbgadget() {
 	fi
 
 	# Ensure a single gadget preset is present and bound to auto UDC.
+	# gadget_preset=auto resolves to rndis-ecm (composite); fixed presets win.
 	if ! uci -q get usbgadget.@preset[0] >/dev/null; then
 		uci -q add usbgadget preset
 	fi

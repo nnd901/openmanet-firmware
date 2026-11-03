@@ -9,9 +9,11 @@ enabled="$(uci -q get openmanet_usb_otg.main.enabled)"
 [ "$enabled" = "0" ] && exit 0
 
 preset="$(uci -q get openmanet_usb_otg.main.gadget_preset)"
-[ -n "$preset" ] || preset='rndis'
+[ -n "$preset" ] || preset='auto'
+preset="$(openmanet_usb_otg_resolve_preset "$preset")"
 
 # Bind the OpenWrt usbgadget preset to the first UDC (dwc2 on Pi).
+# auto → rndis-ecm composite; fixed LuCI presets are used as-is.
 if ! uci -q get usbgadget.@preset[0] >/dev/null; then
 	uci -q add usbgadget preset >/dev/null
 fi

@@ -18,6 +18,36 @@ openmanet_usb_otg_share_mode() {
 	echo "$mode"
 }
 
+# Map LuCI/UCI gadget_preset to a real usbgadget preset name.
+# Host OS is not reliably visible from the gadget before bind, so "auto"
+# ships composite RNDIS+ECM (Android ↔ RNDIS, Linux/macOS ↔ ECM) and relies
+# on universal MACs + UDC rebind on host change. Fixed presets still win.
+openmanet_usb_otg_resolve_preset() {
+	local preset="${1:-}"
+
+	case "$preset" in
+		auto|"")
+			echo "rndis-ecm"
+			;;
+		rndis|rndis-ecm|ncm)
+			echo "$preset"
+			;;
+		*)
+			# Unknown value — fall back to the practical mixed-host default.
+			echo "rndis-ecm"
+			;;
+	esac
+}
+
+# Effective usbgadget preset from openmanet_usb_otg.main.gadget_preset.
+openmanet_usb_otg_effective_preset() {
+	local preset
+
+	config_load openmanet_usb_otg
+	config_get preset main gadget_preset auto
+	openmanet_usb_otg_resolve_preset "$preset"
+}
+
 # Derive a universally administered unicast MAC from board eth0.
 # $1 = function index (0, 1, …); $2 = host|dev salt so addresses stay distinct.
 # Android usbnet names the host iface ethN when host_addr has U/L bit clear,
