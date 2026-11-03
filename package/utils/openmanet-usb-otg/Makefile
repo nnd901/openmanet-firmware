@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=openmanet-usb-otg
-PKG_RELEASE:=4
+PKG_RELEASE:=6
 PKG_VERSION:=1.0
 
 PKG_LICENSE:=GPL-2.0-only
@@ -22,7 +22,7 @@ endef
 define Package/openmanet-usb-otg/description
   Enable the Pi USB device controller as an RNDIS Ethernet gadget (NCM and
   RNDIS+ECM selectable) and share the device LAN with a connected USB host
-  (default: bridge gadget ports into br-lan).
+  (default: bridge gadget ports into br-ahwlan or br-lan).
 endef
 
 define Package/openmanet-usb-otg/conffiles

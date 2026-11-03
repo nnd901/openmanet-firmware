@@ -18,15 +18,110 @@ openmanet_usb_otg_share_mode() {
 	echo "$mode"
 }
 
-# Add a single port to the br-lan bridge device in UCI (netdev need not exist yet).
+# Derive a universally administered unicast MAC from board eth0.
+# $1 = function index (0, 1, …); $2 = host|dev salt so addresses stay distinct.
+# Android usbnet names the host iface ethN when host_addr has U/L bit clear,
+# and usbN when it is locally administered (kernel random default) — ethN is
+# what stock EthernetTracker enables. Do not hardcode one OUI on every unit.
+openmanet_usb_otg_derived_mac() {
+	local idx="$1" kind="$2"
+	local mac b0 b1 b2 b3 b4 b5 salt last
+
+	[ -r /sys/class/net/eth0/address ] || return 1
+	mac="$(cat /sys/class/net/eth0/address 2>/dev/null)" || return 1
+	mac="$(echo "$mac" | tr 'A-F' 'a-f')"
+	case "$mac" in
+		[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
+		*) return 1 ;;
+	esac
+
+	IFS=':'
+	set -- $mac
+	b0=$1 b1=$2 b2=$3 b3=$4 b4=$5 b5=$6
+	IFS=
+
+	# Clear multicast (bit 0) and locally-administered / U/L (bit 1).
+	b0=$(printf '%02x' $((0x$b0 & ~0x03)))
+
+	case "$kind" in
+		host) salt=$((0x10 + idx)) ;;
+		dev) salt=$((0x30 + idx)) ;;
+		*) return 1 ;;
+	esac
+	last=$(printf '%02x' $((0x$b5 ^ salt)))
+
+	echo "$b0:$b1:$b2:$b3:$b4:$last"
+}
+
+# Inject per-board host_addr/dev_addr into usbgadget ethernet presets so the
+# next bind advertises universal MACs (must run before usbgadget start/restart).
+openmanet_usb_otg_assign_universal_macs() {
+	local presets_dir=/usr/share/usbgadget
+	local preset file tmp idx in_fun line host dev
+
+	[ -r /sys/class/net/eth0/address ] || return 0
+
+	for preset in rndis ncm rndis-ecm; do
+		file="$presets_dir/$preset"
+		[ -f "$file" ] || continue
+
+		tmp="$file.openmanet-mac.$$"
+		idx=0
+		in_fun=0
+
+		while IFS= read -r line || [ -n "$line" ]; do
+			case "$line" in
+			"config function "*)
+				in_fun=1
+				printf '%s\n' "$line"
+				;;
+			"config "*)
+				in_fun=0
+				printf '%s\n' "$line"
+				;;
+			*"option host_addr"*|*"option dev_addr"*)
+				# Drop prior assignments; rewritten below.
+				;;
+			*"option function "*)
+				printf '%s\n' "$line"
+				if [ "$in_fun" -eq 1 ]; then
+					host="$(openmanet_usb_otg_derived_mac "$idx" host)" || host=
+					dev="$(openmanet_usb_otg_derived_mac "$idx" dev)" || dev=
+					if [ -n "$host" ] && [ -n "$dev" ]; then
+						printf '\toption host_addr '\''%s'\''\n' "$host"
+						printf '\toption dev_addr '\''%s'\''\n' "$dev"
+					fi
+					idx=$((idx + 1))
+				fi
+				;;
+			*)
+				printf '%s\n' "$line"
+				;;
+			esac
+		done < "$file" > "$tmp" || {
+			rm -f "$tmp"
+			continue
+		}
+
+		mv "$tmp" "$file" || rm -f "$tmp"
+	done
+}
+
+# Add a single port to the LAN bridge device in UCI (netdev need not exist yet).
+# OpenMANET uses br-ahwlan; stock OpenWrt uses br-lan. Accept either.
 openmanet_usb_otg_bridge_add_port() {
 	local ifname="$1"
-	local section ports port found=0
+	local section ports port found=0 name
 
 	[ -n "$ifname" ] || return 1
 
-	for section in $(uci -q sections network device); do
-		[ "$(uci -q get network."$section".name)" = "br-lan" ] || continue
+	# uci has no "sections" subcommand; list device sections via show.
+	for section in $(uci -q show network | sed -n 's/^network\.\([^.]*\)=device$/\1/p'); do
+		name="$(uci -q get network."$section".name)"
+		case "$name" in
+			br-ahwlan|br-lan) ;;
+			*) continue ;;
+		esac
 		[ "$(uci -q get network."$section".type)" = "bridge" ] || continue
 
 		ports="$(uci -q get network."$section".ports)"
