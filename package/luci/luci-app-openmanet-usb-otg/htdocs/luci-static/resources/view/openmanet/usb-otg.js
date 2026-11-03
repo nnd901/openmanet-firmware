@@ -28,11 +28,12 @@ return view.extend({
 		o.rmempty = false;
 
 		o = s.option(form.ListValue, 'gadget_preset', _('USB gadget type'),
-			_('Auto uses RNDIS+ECM composite plus universal MACs and UDC rebind on host change ' +
-			  '(gadget side cannot reliably identify PC vs phone before bind). ' +
+			_('Auto starts as RNDIS+ECM with universal MACs, rebinds UDC on host change, ' +
+			  'then narrows to the single function whose host_addr appears in bridge FDB. ' +
 			  'A fixed preset always overrides Auto.'));
-		o.value('auto', _('Auto (RNDIS+ECM — recommended for PC and phone)'));
+		o.value('auto', _('Auto (RNDIS+ECM, then FDB narrow — recommended)'));
 		o.value('rndis', _('RNDIS only'));
+		o.value('ecm', _('CDC ECM only'));
 		o.value('rndis-ecm', _('RNDIS + ECM composite'));
 		o.value('ncm', _('CDC NCM'));
 		o.default = 'auto';
