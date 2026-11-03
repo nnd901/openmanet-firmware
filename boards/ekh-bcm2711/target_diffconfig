@@ -44,7 +44,7 @@ CONFIG_PACKAGE_bsp-bcm271x=y
 CONFIG_PACKAGE_mavp2p=m
 
 # USB OTG Ethernet gadget + LAN share (v1: Pi 4 USB-C; CM4 stays host).
-# Default RNDIS for Android; NCM and RNDIS+ECM remain selectable in LuCI.
+# Default Auto → RNDIS+ECM; fixed RNDIS/NCM/RNDIS+ECM selectable in LuCI.
 CONFIG_PACKAGE_openmanet-usb-otg=y
 CONFIG_PACKAGE_usbgadget-rndis=y
 CONFIG_PACKAGE_usbgadget-rndis-ecm=y
