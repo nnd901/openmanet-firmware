@@ -221,3 +221,28 @@ openmanet_usb_otg_apply_network() {
 			;;
 	esac
 }
+
+# Unbind + rebind the owrt_* gadget from its UDC. Leaves configfs functions
+# (and host_addr/dev_addr) intact — safer than restarting usbgadget after a
+# Windows↔Android host switch, which can leave dwc2 stuck in "not attached"
+# while the host keeps retrying high-/full-speed enumeration.
+openmanet_usb_otg_rebind_udc() {
+	local g udc
+
+	for g in /sys/kernel/config/usb_gadget/owrt_*; do
+		[ -d "$g" ] || continue
+		udc="$(cat "$g/UDC" 2>/dev/null)"
+		[ -n "$udc" ] || continue
+
+		echo "" > "$g/UDC" 2>/dev/null || true
+		sleep 1
+		if ! echo "$udc" > "$g/UDC" 2>/dev/null; then
+			logger -t openmanet-usb-otg "failed to rebind UDC $udc"
+			return 1
+		fi
+		logger -t openmanet-usb-otg "rebound UDC $udc"
+		return 0
+	done
+
+	return 1
+}

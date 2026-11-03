@@ -1,0 +1,71 @@
+#!/bin/sh
+# Rebind the USB gadget UDC after host unplug or a wedged attach.
+# dwc2 often stays bound but "not attached" after a PC (RNDIS) → phone (ECM)
+# hop; hosts then retry high-speed forever until UDC is unbound/rebound.
+
+. /lib/openmanet/usb-otg.sh
+
+INTERVAL=2
+STUCK_SECS=8
+COOLDOWN=20
+
+last_state=
+stuck_ticks=0
+last_rebind=0
+
+now() {
+	cut -d. -f1 /proc/uptime
+}
+
+while sleep "$INTERVAL"; do
+	openmanet_usb_otg_enabled || {
+		last_state=
+		stuck_ticks=0
+		continue
+	}
+
+	udc_path=
+	for p in /sys/class/udc/*; do
+		[ -e "$p/state" ] || continue
+		udc_path=$p
+		break
+	done
+	[ -n "$udc_path" ] || continue
+
+	state="$(cat "$udc_path/state" 2>/dev/null)"
+	speed="$(cat "$udc_path/current_speed" 2>/dev/null)"
+	t="$(now)"
+
+	# Host just left configured → clean slate for the next OS.
+	if [ "$last_state" = "configured" ] && [ "$state" = "not attached" ]; then
+		if [ $((t - last_rebind)) -ge "$COOLDOWN" ]; then
+			logger -t openmanet-usb-otg \
+				"UDC host disconnect (was configured); rebinding for next attach"
+			openmanet_usb_otg_rebind_udc && last_rebind=$t
+			stuck_ticks=0
+			last_state="$(cat "$udc_path/state" 2>/dev/null)"
+			continue
+		fi
+	fi
+
+	# Wedged: electrically active speed but never reaches configured.
+	# Clean unplug usually reports UNKNOWN speed; the stuck PC→phone case
+	# kept reporting high-speed/full-speed with state=not attached.
+	case "$state/$speed" in
+	"not attached/high-speed"|"not attached/full-speed"|"not attached/super-speed"*)
+		stuck_ticks=$((stuck_ticks + INTERVAL))
+		;;
+	*)
+		stuck_ticks=0
+		;;
+	esac
+
+	if [ "$stuck_ticks" -ge "$STUCK_SECS" ] && [ $((t - last_rebind)) -ge "$COOLDOWN" ]; then
+		logger -t openmanet-usb-otg \
+			"UDC stuck (state=$state speed=$speed); rebinding"
+		openmanet_usb_otg_rebind_udc && last_rebind=$t
+		stuck_ticks=0
+	fi
+
+	last_state=$state
+done
