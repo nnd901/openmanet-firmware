@@ -33,6 +33,10 @@ configure_usbgadget() {
 	uci -q set usbgadget.@preset[0].name="$preset"
 	uci -q set usbgadget.@preset[0].UDC='auto'
 	uci -q commit usbgadget
+
+	# Before the next usbgadget bind: per-board universal host_addr from eth0
+	# so Android names the host iface ethN (EthernetTracker) instead of usbN.
+	openmanet_usb_otg_assign_universal_macs
 }
 
 start_service() {
