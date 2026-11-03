@@ -49,12 +49,18 @@ start_service() {
 	openmanet_usb_otg_enabled || return 0
 
 	openmanet_usb_otg_apply_network
-	[ -x /etc/init.d/network ] || return 0
 
 	# Reload network so newly bridged usb0/usb1 ports are picked up when present.
-	if [ -d /sys/class/net/usb0 ] || [ -d /sys/class/net/usb1 ]; then
+	if [ -x /etc/init.d/network ] && \
+	   { [ -d /sys/class/net/usb0 ] || [ -d /sys/class/net/usb1 ]; }; then
 		ubus call network reload 2>/dev/null || /etc/init.d/network reload
 	fi
+
+	# Watch for host disconnect / wedged attach and rebind UDC only (keeps MACs).
+	procd_open_instance udc-watch
+	procd_set_param command /usr/sbin/openmanet-usb-otg-udc-watch
+	procd_set_param respawn 3600 5 5
+	procd_close_instance
 }
 
 stop_service() {
