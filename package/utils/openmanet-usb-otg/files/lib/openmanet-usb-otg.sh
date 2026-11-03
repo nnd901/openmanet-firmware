@@ -18,15 +18,21 @@ openmanet_usb_otg_share_mode() {
 	echo "$mode"
 }
 
-# Add a single port to the br-lan bridge device in UCI (netdev need not exist yet).
+# Add a single port to the LAN bridge device in UCI (netdev need not exist yet).
+# OpenMANET uses br-ahwlan; stock OpenWrt uses br-lan. Accept either.
 openmanet_usb_otg_bridge_add_port() {
 	local ifname="$1"
-	local section ports port found=0
+	local section ports port found=0 name
 
 	[ -n "$ifname" ] || return 1
 
-	for section in $(uci -q sections network device); do
-		[ "$(uci -q get network."$section".name)" = "br-lan" ] || continue
+	# uci has no "sections" subcommand; list device sections via show.
+	for section in $(uci -q show network | sed -n 's/^network\.\([^.]*\)=device$/\1/p'); do
+		name="$(uci -q get network."$section".name)"
+		case "$name" in
+			br-ahwlan|br-lan) ;;
+			*) continue ;;
+		esac
 		[ "$(uci -q get network."$section".type)" = "bridge" ] || continue
 
 		ports="$(uci -q get network."$section".ports)"
