@@ -153,7 +153,7 @@ openmanet_usb_otg_bridge_usb0() {
 }
 
 # Dedicated usb interface + DHCP + firewall forward toward lan/wan.
-# Uses usb0 (RNDIS-only default, or RNDIS first in rndis-ecm).
+# Uses usb0 (RNDIS first in default rndis-ecm; also RNDIS-only / NCM).
 openmanet_usb_otg_apply_nat() {
 	local ip netmask start limit section
 

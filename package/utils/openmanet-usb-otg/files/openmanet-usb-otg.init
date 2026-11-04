@@ -13,7 +13,7 @@ configure_usbgadget() {
 
 	config_load openmanet_usb_otg
 	config_get_bool enabled main enabled 0
-	config_get preset main gadget_preset rndis
+	config_get preset main gadget_preset rndis-ecm
 
 	if [ "$enabled" -ne 1 ]; then
 		# Leave usbgadget presets disabled when OTG share is off.
