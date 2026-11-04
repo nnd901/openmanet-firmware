@@ -18,24 +18,40 @@ openmanet_usb_otg_share_mode() {
 	echo "$mode"
 }
 
+# Auto always starts as this composite (never RNDIS-only). Covers:
+#   Android → ECM (proven with universal host_addr), Windows → RNDIS,
+#   macOS → ECM; iPhone usually needs NCM (use class_apple / fixed ncm).
+OPENMANET_USB_OTG_AUTO_COMPOSITE=rndis-ecm
+
 # Map LuCI/UCI gadget_preset to a real usbgadget preset name.
-# Host OS is not reliably visible from the gadget before bind, so "auto"
-# ships composite RNDIS+ECM (Android ↔ RNDIS, Linux/macOS ↔ ECM) and relies
-# on universal MACs + UDC rebind on host change + optional FDB narrow.
-# Fixed presets still win.
+# Host OS/class is not reliably visible before bind. "auto" ships composite
+# RNDIS+ECM + FDB narrow (ECM-only when exclusive); class_* shortcuts pick a
+# fixed preset known to suit that class. Fixed raw presets still win.
 openmanet_usb_otg_resolve_preset() {
 	local preset="${1:-}"
 
 	case "$preset" in
 		auto|"")
-			echo "rndis-ecm"
+			echo "$OPENMANET_USB_OTG_AUTO_COMPOSITE"
+			;;
+		# Device-class shortcuts (honest: user picks the class; we do not detect it).
+		android|class_android)
+			# Live evidence: ECM + universal host_addr; RNDIS-only fails on Android.
+			echo "ecm"
+			;;
+		windows|class_windows|pc|class_pc)
+			# Modern Windows prefers NCM; avoids shipping RNDIS-only as a class default.
+			echo "ncm"
+			;;
+		apple|mac|macos|iphone|ios|class_apple)
+			# macOS/iPhone USB-Ethernet stacks prefer CDC NCM (see plan iPhone limits).
+			echo "ncm"
 			;;
 		rndis|ecm|rndis-ecm|ncm)
 			echo "$preset"
 			;;
 		*)
-			# Unknown value — fall back to the practical mixed-host default.
-			echo "rndis-ecm"
+			echo "$OPENMANET_USB_OTG_AUTO_COMPOSITE"
 			;;
 	esac
 }
@@ -104,9 +120,9 @@ openmanet_usb_otg_fdb_learned_host() {
 
 	for br in br-ahwlan br-lan; do
 		[ -d "/sys/class/net/$br" ] || continue
-		# Match host MAC on usb0/usb1; skip permanent/self gadget entries.
+		# Match host MAC on gadget usb*; skip permanent/self gadget entries.
 		out="$(bridge fdb show br "$br" 2>/dev/null | tr 'A-F' 'a-f')" || continue
-		echo "$out" | grep -E "^$mac .*dev usb[01]( |$)" | grep -Evq 'permanent|self' && return 0
+		echo "$out" | grep -E "^$mac .*dev usb[0-9]+( |$)" | grep -Evq 'permanent|self' && return 0
 	done
 	return 1
 }
@@ -132,25 +148,50 @@ openmanet_usb_otg_set_runtime_preset() {
 	fi
 }
 
-# Narrow Auto composite → single function after FDB proves which host_addr works.
+# Decide exclusive FDB winner among live functions.
+# Prints: rndis | ecm | ncm | "" (none/ambiguous).
+# Policy: never recommend narrowing *to RNDIS* — RNDIS-only fails on Android;
+# Windows keeps working on the composite. Prefer ECM (or NCM if that is the
+# exclusive learner on a future composite).
+openmanet_usb_otg_fdb_exclusive_winner() {
+	local rndis_host ecm_host ncm_host rndis_ok=0 ecm_ok=0 ncm_ok=0
+
+	rndis_host="$(openmanet_usb_otg_live_host_addr rndis)" || rndis_host=
+	ecm_host="$(openmanet_usb_otg_live_host_addr ecm)" || ecm_host=
+	ncm_host="$(openmanet_usb_otg_live_host_addr ncm)" || ncm_host=
+
+	[ -n "$rndis_host" ] && openmanet_usb_otg_fdb_learned_host "$rndis_host" && rndis_ok=1
+	[ -n "$ecm_host" ] && openmanet_usb_otg_fdb_learned_host "$ecm_host" && ecm_ok=1
+	[ -n "$ncm_host" ] && openmanet_usb_otg_fdb_learned_host "$ncm_host" && ncm_ok=1
+
+	# Need a composite present (at least two function types) before narrowing.
+	local present=0
+	[ -n "$rndis_host" ] && present=$((present + 1))
+	[ -n "$ecm_host" ] && present=$((present + 1))
+	[ -n "$ncm_host" ] && present=$((present + 1))
+	[ "$present" -ge 2 ] || {
+		echo ""
+		return 0
+	}
+
+	case "$ecm_ok$ncm_ok$rndis_ok" in
+		100) echo "ecm" ;;
+		010) echo "ncm" ;;
+		# RNDIS-only learner: stay on composite (do not narrow to rndis).
+		001) echo "" ;;
+		*) echo "" ;;
+	esac
+}
+
+# Narrow Auto composite → ECM/NCM after FDB proves that function alone works.
 openmanet_usb_otg_fdb_narrow_maybe() {
-	local rndis_host ecm_host rndis_ok=0 ecm_ok=0 target
+	local target
 
 	openmanet_usb_otg_is_auto || return 0
 	[ -z "$(openmanet_usb_otg_narrow_state_get)" ] || return 0
 
-	rndis_host="$(openmanet_usb_otg_live_host_addr rndis)" || rndis_host=
-	ecm_host="$(openmanet_usb_otg_live_host_addr ecm)" || ecm_host=
-	[ -n "$rndis_host" ] && [ -n "$ecm_host" ] || return 0
-
-	openmanet_usb_otg_fdb_learned_host "$rndis_host" && rndis_ok=1
-	openmanet_usb_otg_fdb_learned_host "$ecm_host" && ecm_ok=1
-
-	case "$rndis_ok$ecm_ok" in
-		10) target=rndis ;;
-		01) target=ecm ;;
-		*) return 0 ;;
-	esac
+	target="$(openmanet_usb_otg_fdb_exclusive_winner)"
+	[ -n "$target" ] || return 0
 
 	logger -t openmanet-usb-otg \
 		"FDB narrow: only $target host_addr learned; switching runtime preset"
@@ -164,16 +205,18 @@ openmanet_usb_otg_fdb_narrow_maybe() {
 
 # After host leave, restore composite so the next OS sees both functions again.
 openmanet_usb_otg_auto_restore_composite() {
+	local want="$OPENMANET_USB_OTG_AUTO_COMPOSITE"
+
 	openmanet_usb_otg_is_auto || {
 		openmanet_usb_otg_narrow_state_set ""
 		return 0
 	}
 
 	if [ -n "$(openmanet_usb_otg_narrow_state_get)" ] || \
-	   [ "$(uci -q get usbgadget.@preset[0].name)" != "rndis-ecm" ]; then
+	   [ "$(uci -q get usbgadget.@preset[0].name)" != "$want" ]; then
 		logger -t openmanet-usb-otg \
-			"Auto: restoring rndis-ecm composite for next host"
-		openmanet_usb_otg_set_runtime_preset rndis-ecm || return 1
+			"Auto: restoring $want composite for next host"
+		openmanet_usb_otg_set_runtime_preset "$want" || return 1
 	fi
 	openmanet_usb_otg_narrow_state_set ""
 	return 0

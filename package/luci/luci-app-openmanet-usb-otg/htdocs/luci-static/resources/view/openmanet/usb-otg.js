@@ -7,8 +7,9 @@ return view.extend({
 		var m, s, o;
 
 		m = new form.Map('openmanet_usb_otg', _('USB OTG LAN share'),
-			_('Share this device LAN with a PC or phone over USB Ethernet. ' +
-			  'Auto presents RNDIS+ECM so mixed hosts work without guessing the OS. ' +
+			_('Share this device LAN with a PC, Mac, Android phone, or (rarely) iPhone over USB Ethernet. ' +
+			  'The gadget cannot reliably detect the host OS before bind — Auto presents RNDIS+ECM ' +
+			  '(never RNDIS-only) and may narrow to ECM after bridge FDB shows which function works. ' +
 			  'Supported on Raspberry Pi Zero 2W and Pi 4 USB-C.'));
 
 		s = m.section(form.NamedSection, 'main', 'openmanet_usb_otg', _('Settings'));
@@ -28,14 +29,17 @@ return view.extend({
 		o.rmempty = false;
 
 		o = s.option(form.ListValue, 'gadget_preset', _('USB gadget type'),
-			_('Auto starts as RNDIS+ECM with universal MACs, rebinds UDC on host change, ' +
-			  'then narrows to the single function whose host_addr appears in bridge FDB. ' +
-			  'A fixed preset always overrides Auto.'));
-		o.value('auto', _('Auto (RNDIS+ECM, then FDB narrow — recommended)'));
-		o.value('rndis', _('RNDIS only'));
-		o.value('ecm', _('CDC ECM only'));
-		o.value('rndis-ecm', _('RNDIS + ECM composite'));
-		o.value('ncm', _('CDC NCM'));
+			_('Auto / class choices map to gadget presets (no true OS detection). ' +
+			  'Auto = RNDIS+ECM + universal MACs + UDC rebind + FDB narrow to ECM when exclusive. ' +
+			  'A fixed choice always overrides Auto. iPhone often needs NCM and USB Host Mode.'));
+		o.value('auto', _('Auto — mixed hosts (RNDIS+ECM, then FDB→ECM) — recommended'));
+		o.value('android', _('Android phone → CDC ECM'));
+		o.value('windows', _('Windows PC → CDC NCM'));
+		o.value('apple', _('Mac / iPhone → CDC NCM'));
+		o.value('rndis-ecm', _('Advanced: RNDIS + ECM composite (no Auto/FDB)'));
+		o.value('ecm', _('Advanced: CDC ECM only'));
+		o.value('ncm', _('Advanced: CDC NCM only'));
+		o.value('rndis', _('Advanced: RNDIS only (not for Android)'));
 		o.default = 'auto';
 		o.rmempty = false;
 

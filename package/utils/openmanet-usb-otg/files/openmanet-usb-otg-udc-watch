@@ -25,7 +25,7 @@ now() {
 }
 
 fdb_narrow_tick() {
-	local rndis_host ecm_host rndis_ok=0 ecm_ok=0 cand=
+	local cand=
 
 	openmanet_usb_otg_is_auto || {
 		narrow_hit_ticks=0
@@ -39,22 +39,13 @@ fdb_narrow_tick() {
 	}
 	[ "$configured_ticks" -ge "$NARROW_ARM_SECS" ] || return 0
 
-	rndis_host="$(openmanet_usb_otg_live_host_addr rndis)" || rndis_host=
-	ecm_host="$(openmanet_usb_otg_live_host_addr ecm)" || ecm_host=
-	[ -n "$rndis_host" ] && [ -n "$ecm_host" ] || return 0
-
-	openmanet_usb_otg_fdb_learned_host "$rndis_host" && rndis_ok=1
-	openmanet_usb_otg_fdb_learned_host "$ecm_host" && ecm_ok=1
-
-	case "$rndis_ok$ecm_ok" in
-		10) cand=rndis ;;
-		01) cand=ecm ;;
-		*)
-			narrow_hit_ticks=0
-			narrow_candidate=
-			return 0
-			;;
-	esac
+	# Exclusive ECM/NCM learner only — never narrow to RNDIS-only.
+	cand="$(openmanet_usb_otg_fdb_exclusive_winner)"
+	[ -n "$cand" ] || {
+		narrow_hit_ticks=0
+		narrow_candidate=
+		return 0
+	}
 
 	if [ "$cand" = "$narrow_candidate" ]; then
 		narrow_hit_ticks=$((narrow_hit_ticks + INTERVAL))
