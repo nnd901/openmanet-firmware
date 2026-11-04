@@ -1,0 +1,156 @@
+#!/bin/sh
+# Rebind the USB gadget UDC after host unplug or a wedged attach, and (when
+# LuCI preset is Auto) narrow RNDIS+ECM to a single function after bridge FDB
+# shows only one host_addr learning traffic.
+
+. /lib/openmanet/usb-otg.sh
+
+INTERVAL=2
+STUCK_SECS=8
+COOLDOWN=20
+# Require exclusive FDB hits for this long before narrowing.
+NARROW_NEED_SECS=10
+# Do not attempt narrow until the link has stayed configured this long.
+NARROW_ARM_SECS=6
+
+last_state=
+stuck_ticks=0
+last_rebind=0
+configured_ticks=0
+narrow_hit_ticks=0
+narrow_candidate=
+
+now() {
+	cut -d. -f1 /proc/uptime
+}
+
+fdb_narrow_tick() {
+	local cand=
+
+	openmanet_usb_otg_is_auto || {
+		narrow_hit_ticks=0
+		narrow_candidate=
+		return 0
+	}
+	[ -z "$(openmanet_usb_otg_narrow_state_get)" ] || {
+		narrow_hit_ticks=0
+		narrow_candidate=
+		return 0
+	}
+	[ "$configured_ticks" -ge "$NARROW_ARM_SECS" ] || return 0
+
+	# Exclusive ECM/NCM learner only — never narrow to RNDIS-only.
+	cand="$(openmanet_usb_otg_fdb_exclusive_winner)"
+	[ -n "$cand" ] || {
+		narrow_hit_ticks=0
+		narrow_candidate=
+		return 0
+	}
+
+	if [ "$cand" = "$narrow_candidate" ]; then
+		narrow_hit_ticks=$((narrow_hit_ticks + INTERVAL))
+	else
+		narrow_candidate=$cand
+		narrow_hit_ticks=$INTERVAL
+	fi
+
+	[ "$narrow_hit_ticks" -ge "$NARROW_NEED_SECS" ] || return 0
+
+	openmanet_usb_otg_fdb_narrow_maybe
+	narrow_hit_ticks=0
+	narrow_candidate=
+}
+
+while sleep "$INTERVAL"; do
+	openmanet_usb_otg_enabled || {
+		last_state=
+		stuck_ticks=0
+		configured_ticks=0
+		narrow_hit_ticks=0
+		narrow_candidate=
+		continue
+	}
+
+	# Fixed LuCI preset: clear any prior Auto narrow state and skip FDB logic.
+	if ! openmanet_usb_otg_is_auto; then
+		[ -z "$(openmanet_usb_otg_narrow_state_get)" ] || \
+			openmanet_usb_otg_narrow_state_set ""
+		narrow_hit_ticks=0
+		narrow_candidate=
+	fi
+
+	udc_path=
+	for p in /sys/class/udc/*; do
+		[ -e "$p/state" ] || continue
+		udc_path=$p
+		break
+	done
+	[ -n "$udc_path" ] || continue
+
+	state="$(cat "$udc_path/state" 2>/dev/null)"
+	speed="$(cat "$udc_path/current_speed" 2>/dev/null)"
+	t="$(now)"
+
+	# Host just left configured → restore Auto composite if narrowed, then
+	# rebind so the next OS gets a clean attach.
+	if [ "$last_state" = "configured" ] && [ "$state" = "not attached" ]; then
+		if [ $((t - last_rebind)) -ge "$COOLDOWN" ]; then
+			logger -t openmanet-usb-otg \
+				"UDC host disconnect (was configured); preparing next attach"
+			if openmanet_usb_otg_is_auto && \
+			   [ -n "$(openmanet_usb_otg_narrow_state_get)" ]; then
+				# Full preset restore (usbgadget restart) — already binds UDC.
+				openmanet_usb_otg_auto_restore_composite && last_rebind=$t
+			else
+				openmanet_usb_otg_is_auto && openmanet_usb_otg_auto_restore_composite
+				openmanet_usb_otg_rebind_udc && last_rebind=$t
+			fi
+			stuck_ticks=0
+			configured_ticks=0
+			narrow_hit_ticks=0
+			narrow_candidate=
+			last_state="$(cat "$udc_path/state" 2>/dev/null)"
+			continue
+		fi
+	fi
+
+	# Wedged: electrically active speed but never reaches configured.
+	# Clean unplug usually reports UNKNOWN speed; the stuck PC→phone case
+	# kept reporting high-speed/full-speed with state=not attached.
+	case "$state/$speed" in
+	"not attached/high-speed"|"not attached/full-speed"|"not attached/super-speed"*)
+		stuck_ticks=$((stuck_ticks + INTERVAL))
+		;;
+	*)
+		stuck_ticks=0
+		;;
+	esac
+
+	if [ "$stuck_ticks" -ge "$STUCK_SECS" ] && [ $((t - last_rebind)) -ge "$COOLDOWN" ]; then
+		logger -t openmanet-usb-otg \
+			"UDC stuck (state=$state speed=$speed); rebinding"
+		# Prefer restoring composite under Auto so a wedged single-function
+		# bind does not strand the next host on the wrong preset.
+		if openmanet_usb_otg_is_auto && \
+		   [ -n "$(openmanet_usb_otg_narrow_state_get)" ]; then
+			openmanet_usb_otg_auto_restore_composite && last_rebind=$t
+		else
+			openmanet_usb_otg_rebind_udc && last_rebind=$t
+		fi
+		stuck_ticks=0
+		configured_ticks=0
+		narrow_hit_ticks=0
+		narrow_candidate=
+	fi
+
+	if [ "$state" = "configured" ]; then
+		configured_ticks=$((configured_ticks + INTERVAL))
+		fdb_narrow_tick
+	else
+		configured_ticks=0
+		narrow_hit_ticks=0
+		narrow_candidate=
+	fi
+
+	last_state=$state
+done

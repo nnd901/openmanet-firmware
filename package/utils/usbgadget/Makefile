@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=usbgadget
-PKG_RELEASE:=3
+PKG_RELEASE:=4
 
 PKG_LICENSE:=BSD-2-Clause
 
@@ -53,4 +53,5 @@ endef
 $(eval $(call GadgetPreset,ncm,CDC-NCM,+kmod-usb-gadget-ncm))
 $(eval $(call GadgetPreset,acm,CDC-ACM,+kmod-usb-gadget-serial))
 $(eval $(call GadgetPreset,rndis,RNDIS,+kmod-usb-gadget-eth))
+$(eval $(call GadgetPreset,ecm,CDC-ECM,+kmod-usb-gadget-eth))
 $(eval $(call GadgetPreset,rndis-ecm,RNDIS+ECM,+kmod-usb-gadget-eth))

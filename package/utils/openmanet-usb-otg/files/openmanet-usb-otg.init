@@ -13,7 +13,8 @@ configure_usbgadget() {
 
 	config_load openmanet_usb_otg
 	config_get_bool enabled main enabled 0
-	config_get preset main gadget_preset rndis
+	config_get preset main gadget_preset auto
+	preset="$(openmanet_usb_otg_resolve_preset "$preset")"
 
 	if [ "$enabled" -ne 1 ]; then
 		# Leave usbgadget presets disabled when OTG share is off.
@@ -27,6 +28,7 @@ configure_usbgadget() {
 	fi
 
 	# Ensure a single gadget preset is present and bound to auto UDC.
+	# gadget_preset=auto resolves to rndis-ecm (composite); fixed presets win.
 	if ! uci -q get usbgadget.@preset[0] >/dev/null; then
 		uci -q add usbgadget preset
 	fi
@@ -40,6 +42,10 @@ configure_usbgadget() {
 }
 
 start_service() {
+	# Service (re)start always applies the LuCI/UCI preset resolution; drop any
+	# prior Auto FDB-narrow runtime state so we begin from composite again.
+	openmanet_usb_otg_narrow_state_set ""
+
 	configure_usbgadget
 
 	# Always restart usbgadget so enable/disable and preset changes take effect
@@ -49,12 +55,18 @@ start_service() {
 	openmanet_usb_otg_enabled || return 0
 
 	openmanet_usb_otg_apply_network
-	[ -x /etc/init.d/network ] || return 0
 
 	# Reload network so newly bridged usb0/usb1 ports are picked up when present.
-	if [ -d /sys/class/net/usb0 ] || [ -d /sys/class/net/usb1 ]; then
+	if [ -x /etc/init.d/network ] && \
+	   { [ -d /sys/class/net/usb0 ] || [ -d /sys/class/net/usb1 ]; }; then
 		ubus call network reload 2>/dev/null || /etc/init.d/network reload
 	fi
+
+	# Watch for host disconnect / wedged attach and rebind UDC only (keeps MACs).
+	procd_open_instance udc-watch
+	procd_set_param command /usr/sbin/openmanet-usb-otg-udc-watch
+	procd_set_param respawn 3600 5 5
+	procd_close_instance
 }
 
 stop_service() {
